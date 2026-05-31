@@ -1,1 +1,57 @@
+manifestVersion: 1
+id: danhaus93dev-solostrike
+category: bitcoin
+name: SoloStrike Dev
+version: "1.12.0-dev"
+tagline: Dev build — v1.12.0 feature testing (Pool Internals + Luck & Analytics)
+description: >-
+  ⚠️ DEVELOPMENT BUILD — installs ALONGSIDE the production SoloStrike app with
+  its own separate data directory. Use this to test the v1.12.0 feature set
+  (3-page desktop layout, Pool Internals, Luck & Analytics, per-rig J/TH,
+  block effort/luck, persisted history) before merging to main.
 
+
+  This dev app pulls the :latest dev images built from the v1.12-feature
+  branch. Point your miners at it on the SAME stratum ports only if the
+  production app is stopped — otherwise run it data-only / read-only against
+  a separate test config. Do NOT use for real long-term mining; it is rebuilt
+  and reinstalled frequently.
+
+
+  When v1.12.0 is validated here, merge the code to main in the production
+  repo and ship through the real SoloStrike store. Then remove this dev app
+  and its community store.
+releaseNotes: >-
+  v1.12.0-dev — feature build under test.
+
+
+  • Desktop/tablet 3-page layout (glance / pool internals / luck & analytics)
+    with persisted within-page drag; mobile keeps the swipe-card carousel.
+
+  • Pool Internals: ckpool-native hashrate windows + % of peak, SPS windows,
+    connection states (active/idle/disconnected), Best Share trend.
+
+  • Luck & Analytics: block effort/luck history, hashrate stability,
+    reject-reason trend, fleet efficiency (per-rig J/TH), reliability.
+
+  • API: new ckpool fields surfaced, per-rig power → J/TH, block-effort +
+    best-share persistence, ua-tailer trailing-line fix (v1.11.62).
+
+  • Theme rename: Paper Light → Paper Bright.
+
+
+  Built from the v1.12-feature branch. Not security-hardened yet — hardening
+  is deferred to a follow-up after the feature set is validated.
+developer: danhaus93-ops
+website: https://github.com/danhaus93-ops/solostrike-umbrel
+dependencies:
+  - bitcoin
+repo: https://github.com/danhaus93-ops/solostrike-umbrel-dev
+support: https://github.com/danhaus93-ops/solostrike-umbrel/issues
+port: 1235
+path: ""
+defaultUsername: ""
+defaultPassword: ""
+submitter: danhaus93-ops
+submission: https://github.com/danhaus93-ops/solostrike-umbrel-dev
+icon: https://raw.githubusercontent.com/danhaus93-ops/solostrike-umbrel/main/danhaus93-solostrike/icon.svg
