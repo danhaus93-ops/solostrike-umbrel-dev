@@ -1,0 +1,151 @@
+name: Build Dev SV2 Pool (Stage C1)
+
+# Builds ghcr.io/danhaus93-ops/solostrike-sv2pool:dev-sri-f817c49
+# from stratum-mining/sv2-apps @ f817c49 (2026-07-16), the pool_sv2 binary.
+# DEV IMAGE ONLY. ckpool + main app untouched. Manual trigger.
+#
+# Bundles a small entrypoint that: (1) generates+persists a secp256k1 authority
+# keypair on first boot (base58, = pool identity for miner Noise verification),
+# (2) renders pool.toml from env, (3) waits for node.sock if absent (graceful).
+
+on:
+  workflow_dispatch:
+    inputs:
+      sri_commit:
+        description: "sv2-apps commit to build"
+        required: true
+        default: "f817c499ade9752ee3b1eb5240c309c9d0c4fd5c"
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE: danhaus93-ops/solostrike-sv2pool
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Clone SRI sv2-apps at pinned commit
+        run: |
+          git clone https://github.com/stratum-mining/sv2-apps.git sri
+          cd sri && git checkout ${{ inputs.sri_commit }}
+
+      - name: Add sidecar entrypoint + keygen to build context
+        run: |
+          # Tiny secp256k1 base58 keypair generator (SRI key format) run at first boot.
+          cat > sri/sidecar-keygen.py <<'PY'
+          import os, sys
+          # SRI uses secp256k1 keys encoded base58 (bs58). Generate + print "pub\npriv".
+          try:
+              from coincurve import PrivateKey
+          except Exception:
+              os.system("pip install --quiet coincurve base58 >/dev/null 2>&1")
+              from coincurve import PrivateKey
+          import base58
+          pk = PrivateKey()
+          priv = pk.secret
+          pub = pk.public_key.format(compressed=True)
+          print(base58.b58encode(pub).decode())
+          print(base58.b58encode(priv).decode())
+          PY
+
+          cat > sri/sidecar-entrypoint.sh <<'ENTRY'
+          #!/bin/sh
+          set -e
+          KEYFILE=/data/sv2pool/authority.keys
+          CONF=/data/sv2pool/pool-config.toml
+          mkdir -p /data/sv2pool
+
+          # 1. authority keypair — generate once, persist (identity for miner verification)
+          if [ ! -f "$KEYFILE" ]; then
+            echo "[sv2pool] generating authority keypair (first boot)"
+            python3 /app/sidecar-keygen.py > "$KEYFILE"
+            chmod 600 "$KEYFILE"
+          fi
+          AUTH_PUB=$(sed -n 1p "$KEYFILE")
+          AUTH_SEC=$(sed -n 2p "$KEYFILE")
+          echo "[sv2pool] authority public key: $AUTH_PUB"
+
+          # 2. wait for Bitcoin Core IPC socket (graceful, like ckpool ipcnotify)
+          SOCK="/bitcoin/${SV2_IPC_SOCKET:-node.sock}"
+          while [ ! -S "$SOCK" ]; do
+            echo "[sv2pool] waiting for node IPC socket at $SOCK (enable IPC in Bitcoin app)"
+            sleep 15
+          done
+          echo "[sv2pool] found node IPC socket $SOCK"
+
+          # 3. render pool-config.toml (literal, no sed on secrets)
+          cat > "$CONF" <<TOML
+          authority_public_key = "$AUTH_PUB"
+          authority_secret_key = "$AUTH_SEC"
+          cert_validity_sec = 3600
+          listen_address = "0.0.0.0:${SV2_LISTEN_PORT:-3346}"
+          coinbase_reward_script = "addr(${SV2_PAYOUT_ADDR:-bc1qtzqxqaxyy6lda2fhdtp5dp0v56vlf6g0tljy2x})"
+          server_id = 1
+          pool_signature = "${SV2_POOL_SIGNATURE:-LoneStrike-dev SV2}"
+          shares_per_minute = 6.0
+          share_batch_size = 10
+          monitoring_address = "0.0.0.0:${SV2_MONITOR_PORT:-9091}"
+          monitoring_cache_refresh_secs = 10
+
+          [template_provider_type.BitcoinCoreIpc]
+          version = ${SV2_CORE_VERSION:-31}
+          network = "${SV2_NETWORK:-mainnet}"
+          data_dir = "/bitcoin"
+          fee_threshold = 100
+          min_interval = 5
+          TOML
+          echo "[sv2pool] rendered $CONF; starting pool_sv2"
+          exec /app/pool_sv2 -c "$CONF"
+          ENTRY
+          chmod +x sri/sidecar-entrypoint.sh
+
+      - name: Write Dockerfile (build pool_sv2 + our entrypoint)
+        run: |
+          cat > sri/Dockerfile.sidecar <<'DOCKER'
+          FROM rust:1.88-slim-bookworm AS builder
+          RUN apt-get update && apt-get install -y --no-install-recommends \
+              capnproto libcapnp-dev curl pkg-config libssl-dev && \
+              rm -rf /var/lib/apt/lists/*
+          WORKDIR /app
+          COPY . .
+          RUN cargo build --release --manifest-path pool-apps/pool/Cargo.toml --target-dir ./
+          # Fail loud if IPC (capnp) didn't link — same guard philosophy as ckpool build
+          RUN test -f ./release/pool_sv2 || (echo "ERROR: pool_sv2 did not build" && exit 1)
+
+          FROM debian:bookworm-slim AS runtime
+          RUN apt-get update && apt-get install -y --no-install-recommends \
+              python3 python3-pip ca-certificates && \
+              rm -rf /var/lib/apt/lists/*
+          WORKDIR /app
+          COPY --from=builder /app/release/pool_sv2 /app/pool_sv2
+          COPY sidecar-entrypoint.sh /app/sidecar-entrypoint.sh
+          COPY sidecar-keygen.py /app/sidecar-keygen.py
+          RUN pip install --quiet --break-system-packages coincurve base58 || pip install --quiet coincurve base58
+          EXPOSE 3346 9091
+          ENTRYPOINT ["/app/sidecar-entrypoint.sh"]
+          DOCKER
+
+      - name: Build & push (amd64 + arm64)
+        uses: docker/build-push-action@v6
+        with:
+          context: sri
+          file: sri/Dockerfile.sidecar
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE }}:dev-sri-f817c49
+            ${{ env.REGISTRY }}/${{ env.IMAGE }}:dev-latest
+
+      - name: Report
+        run: echo "Built ${{ env.REGISTRY }}/${{ env.IMAGE }}:dev-sri-f817c49"
