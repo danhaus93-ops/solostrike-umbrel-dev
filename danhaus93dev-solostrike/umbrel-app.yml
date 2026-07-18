@@ -2,7 +2,7 @@ manifestVersion: 1
 id: danhaus93dev-solostrike
 category: bitcoin
 name: SoloStrike Dev
-version: "1.12.0-dev"
+version: "3.6.4-dev"
 tagline: Dev build — v1.12.0 feature testing (Pool Internals + Luck & Analytics)
 description: >-
   ⚠️ DEVELOPMENT BUILD — installs ALONGSIDE the production SoloStrike app with

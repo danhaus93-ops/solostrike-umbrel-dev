@@ -1,6 +1,6 @@
 # ═══════════════════════════════════════════════════════════════════
 # SoloStrike DEV — docker-compose.yml
-# Pulls :latest dev images. Installs alongside production SoloStrike
+# Pinned to v3.6.4 CI digests. Installs alongside production LoneStrike
 # (distinct app id + data dir). Host stratum ports shifted +10:
 #   3343->3333 · 3344->3334 · 4343->4333 (TLS) · 4344->4334 (NiceHash)
 # Rentals/marketplace testing on the DEV build must dial port 4344.
@@ -135,7 +135,7 @@ services:
       - BITCOIN_RPC_USER=${APP_BITCOIN_RPC_USER}
       - BITCOIN_RPC_PASS=${APP_BITCOIN_RPC_PASS}
       - BITCOIN_ZMQ_HASHBLOCK=tcp://${APP_BITCOIN_NODE_IP}:${APP_BITCOIN_ZMQ_HASHBLOCK_PORT}
-      - POOL_SIGNATURE=SoloStrike on Umbrel/
+      - POOL_SIGNATURE=LoneStrike-dev on Umbrel/
       - START_DIFFICULTY=10000
       - MIN_DIFFICULTY=1
       - MAX_DIFFICULTY=0
@@ -143,20 +143,22 @@ services:
       - UPDATE_INTERVAL=20
 
   stunnel:
-    image: ghcr.io/danhaus93-ops/solostrike-stunnel:latest
+    image: ghcr.io/danhaus93-ops/solostrike-stunnel:v3.6.4@sha256:f057f7593e530f3c3eef8fd9004cd0d8bb2210d4cf80d5ecaf4a9d7e2e571c7d
     restart: on-failure
     security_opt:
       - no-new-privileges:true
     depends_on:
       ckpool:
         condition: service_healthy
+    environment:
+      - CKPOOL_HOST=danhaus93dev-solostrike_ckpool_1
     ports:
       - "4343:4333"
     volumes:
       - ${APP_DATA_DIR}/data/stunnel:/certs
 
   api:
-    image: ghcr.io/danhaus93-ops/solostrike-api:latest
+    image: ghcr.io/danhaus93-ops/solostrike-api:v3.6.4@sha256:3f380da8a518e9ad5b6af454a4d30cf5cfa503ca13807ee4b0320681a8396f83
     restart: on-failure
     security_opt:
       - no-new-privileges:true
@@ -176,6 +178,7 @@ services:
       - ${APP_DATA_DIR}/data/config:/app/config
     environment:
       - NODE_ENV=production
+      - SS_REGISTRY_PUBKEY=5bf81c72c7e55ccf53698185691e55a47159a5cce6343fa1f558405ea623a362
       - CKPOOL_LOG_DIR=/var/log/ckpool
       - CKPOOL_CONFIG_DIR=/etc/ckpool
       - CONFIG_DIR=/app/config
@@ -184,7 +187,7 @@ services:
       - BITCOIN_RPC_USER=${APP_BITCOIN_RPC_USER}
       - BITCOIN_RPC_PASS=${APP_BITCOIN_RPC_PASS}
       - BITCOIN_ZMQ_HASHBLOCK=tcp://${APP_BITCOIN_NODE_IP}:${APP_BITCOIN_ZMQ_HASHBLOCK_PORT}
-      - POOL_SIGNATURE=SoloStrike on Umbrel/
+      - POOL_SIGNATURE=LoneStrike-dev on Umbrel/
       - START_DIFFICULTY=10000
       - MIN_DIFFICULTY=1
       - MAX_DIFFICULTY=0
@@ -197,10 +200,12 @@ services:
       - STRATUM_PORT_TLS=4333
 
   ui:
-    image: ghcr.io/danhaus93-ops/solostrike-ui:latest
+    image: ghcr.io/danhaus93-ops/solostrike-ui:v3.6.4@sha256:c2d377b44c95ef83d13e0259d8f249216cee213c1c509b430cb6cd49242eb046
     restart: on-failure
     security_opt:
       - no-new-privileges:true
     container_name: danhaus93dev-solostrike_ui_1
+    environment:
+      - API_HOST=danhaus93dev-solostrike_api_1
     depends_on:
       - api
