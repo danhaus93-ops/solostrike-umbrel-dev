@@ -1,0 +1,82 @@
+name: Build Dev ckpool (Stage B)
+
+# Builds ghcr.io/danhaus93-ops/solostrike-ckpool:dev-37984cff
+# from ckolivas/ckpool @ 37984cff (2026-07-14, master: yyjson + ipcmining).
+# DEV IMAGE ONLY. Main app pins getumbrel/docker-ckpool-solo:590fb2a and is untouched.
+# Manual trigger only — never auto-fires.
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: "ckpool commit to build"
+        required: true
+        default: "37984cff437316f35b47dffafad831873dc595f6"
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE: danhaus93-ops/solostrike-ckpool
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Write Dockerfile
+        run: |
+          cat > Dockerfile <<'DOCKER'
+          # Dev ckpool build — ckolivas/ckpool master @ pinned commit, --btcsolo mode.
+          # Adds Cap'n Proto so the July-14 ipcmining C++ shim compiles in (HAVE_CAPNP=1);
+          # without capnp deps, ./configure silently disables IPC — defeating the test.
+          ARG VERSION
+          FROM debian:trixie-slim AS builder
+          ARG VERSION
+          WORKDIR /build
+          RUN apt-get update && apt-get install --yes \
+              git build-essential yasm autoconf automake libtool \
+              libzmq3-dev pkgconf \
+              capnproto libcapnp-dev
+          # Con's actively-maintained repo (GitHub mirror). solobtc branch is stale (2024);
+          # master carries --btcsolo, yyjson, and ipcmining.
+          RUN git clone https://github.com/ckolivas/ckpool.git .
+          RUN git checkout $VERSION
+          # getumbrel portability hack: disable CPU-specific asm for a portable multi-arch binary.
+          RUN sed -i "s/host_cpu = 'x86_64'/host_cpu = 'x86_64-disabled'/" configure.ac || true
+          RUN sed -i "s/host_cpu = 'aarch64'/host_cpu = 'aarch64-disabled'/" configure.ac || true
+          RUN ./autogen.sh && ./configure && make -j$(nproc)
+          # Fail loudly if IPC did NOT compile in (guards against silent capnp miss)
+          RUN grep -q "HAVE_CAPNP 1" config.h || (echo "ERROR: ipcmining not compiled (capnp missing)" && exit 1)
+          FROM debian:trixie-slim
+          RUN apt-get update && apt-get install --yes libzmq3-dev libcapnp-1.0.2 || \
+              apt-get install --yes libzmq3-dev capnproto
+          COPY --from=builder /build/src/ckpool /bin/ckpool
+          EXPOSE 3333
+          ENTRYPOINT ["ckpool"]
+          DOCKER
+      - name: Build & push (amd64 + arm64)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: |
+            VERSION=${{ inputs.commit }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE }}:dev-37984cff
+            ${{ env.REGISTRY }}/${{ env.IMAGE }}:dev-latest
+      - name: Report digest
+        run: |
+          echo "Built ${{ env.REGISTRY }}/${{ env.IMAGE }}:dev-37984cff"
+          docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.IMAGE }}:dev-37984cff --format '{{json .Manifest.Digest}}'
