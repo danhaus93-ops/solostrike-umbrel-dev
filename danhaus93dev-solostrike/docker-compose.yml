@@ -106,7 +106,7 @@ services:
         echo "[init-permissions] complete"
 
   ckpool:
-    image: ghcr.io/getumbrel/docker-ckpool-solo:590fb2a@sha256:4e6b8f4f9c7d74c2111a6e082a2bbdc936fa510989a81e7cef714d1da944336b
+    image: ghcr.io/danhaus93-ops/solostrike-ckpool:dev-37984cff  # DEV: ckpool master @37984cff (yyjson+ipcmining). Main app unaffected.
     user: "1000:1000"
     depends_on:
       init-permissions:
