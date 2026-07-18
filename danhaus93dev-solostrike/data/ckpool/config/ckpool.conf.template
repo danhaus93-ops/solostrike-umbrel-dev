@@ -20,5 +20,7 @@
   "maxdiff" : 0,
   "highdiff" : 500000,
   "logdir" : "/var/log/ckpool",
-  "zmqblock" : "__BITCOIN_ZMQ_HASHBLOCK__"
+  "zmqblock" : "__BITCOIN_ZMQ_HASHBLOCK__",
+  "ipcmining" : "/bitcoin/node.sock",
+  "ipctemplate" : true
 }
