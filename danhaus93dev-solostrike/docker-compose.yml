@@ -182,6 +182,7 @@ services:
     environment:
       - SV2POOL_HOST=danhaus93dev-solostrike_sv2pool_1
       - SV2_MONITOR_PORT=9091
+      - SV2_MINER_IPS=S19XP=192.168.50.8
       - NODE_ENV=production
       - SS_REGISTRY_PUBKEY=5bf81c72c7e55ccf53698185691e55a47159a5cce6343fa1f558405ea623a362
       - CKPOOL_LOG_DIR=/var/log/ckpool
