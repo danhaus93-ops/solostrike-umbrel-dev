@@ -45,18 +45,23 @@ jobs:
           # Tiny secp256k1 base58 keypair generator (SRI key format) run at first boot.
           cat > sri/sidecar-keygen.py <<'PY'
           import os, sys
-          # SRI uses secp256k1 keys encoded base58 (bs58). Generate + print "pub\npriv".
+          # SRI key format (from stratum-apps/src/key_utils/mod.rs):
+          #   secret = base58CHECK( 32 raw secret bytes )
+          #   public = base58CHECK( [1,0] (u16 LE version=1) + 32-byte X-ONLY pubkey )
           try:
               from coincurve import PrivateKey
+              import base58
           except Exception:
-              os.system("pip install --quiet coincurve base58 >/dev/null 2>&1")
+              os.system("pip install --quiet --break-system-packages coincurve base58 >/dev/null 2>&1")
               from coincurve import PrivateKey
-          import base58
+              import base58
           pk = PrivateKey()
-          priv = pk.secret
-          pub = pk.public_key.format(compressed=True)
-          print(base58.b58encode(pub).decode())
-          print(base58.b58encode(priv).decode())
+          secret = pk.secret                              # 32 bytes
+          comp = pk.public_key.format(compressed=True)    # 33 bytes: prefix(02/03) + 32-byte X
+          xonly = comp[1:]                                # drop parity prefix -> 32-byte x-only
+          pub_payload = bytes([1, 0]) + xonly             # version=1 (u16 LE) + x-only
+          print(base58.b58encode_check(pub_payload).decode())   # public  (base58CHECK)
+          print(base58.b58encode_check(secret).decode())        # secret  (base58CHECK)
           PY
 
           cat > sri/sidecar-entrypoint.sh <<'ENTRY'
