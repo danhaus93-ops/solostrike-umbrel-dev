@@ -37,7 +37,9 @@ services:
         chown 1000:1000 /data
         chown -R 1000:1000 /data/ckpool /data/config
         chown -R 65534:65534 /data/stunnel
-        echo "[init-permissions] chowned: ckpool+config=1000, stunnel=65534"
+        mkdir -p /data/sv2pool
+        chown -R 1000:1000 /data/sv2pool
+        echo "[init-permissions] chowned: ckpool+config=1000, stunnel=65534, sv2pool=1000"
 
         # Step 2: render ckpool.conf FRESH from the committed template every run.
         # Rationale: the Bitcoin RPC host/port/credentials and ZMQ endpoint are
@@ -210,3 +212,31 @@ services:
       - API_HOST=danhaus93dev-solostrike_api_1
     depends_on:
       - api
+
+  # ═════════════════════════════════════════════════════════════════════
+  # sv2pool (Stage C) — SRI SV2 solo pool sidecar. DEV ONLY.
+  # Independent solo pool beside ckpool; own IPC connection to the same
+  # node.sock; own port 3346; monitoring :9091 (container-internal only).
+  # ═════════════════════════════════════════════════════════════════════
+  sv2pool:
+    image: ghcr.io/danhaus93-ops/solostrike-sv2pool:dev-sri-f817c49
+    user: "1000:1000"
+    restart: on-failure
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      init-permissions:
+        condition: service_completed_successfully
+    ports:
+      - "3346:3346"
+    volumes:
+      - ${APP_DATA_DIR}/data/sv2pool:/data/sv2pool
+      - ${APP_BITCOIN_DATA_DIR}:/bitcoin:ro
+    environment:
+      - SV2_LISTEN_PORT=3346
+      - SV2_MONITOR_PORT=9091
+      - SV2_CORE_VERSION=31
+      - SV2_NETWORK=mainnet
+      - SV2_IPC_SOCKET=node.sock
+      - SV2_POOL_SIGNATURE=LoneStrike-dev SV2/
+      - SV2_PAYOUT_ADDR=bc1q6k0j7w77xftasgwx7v5nra06rs3v5txk60wgsk
